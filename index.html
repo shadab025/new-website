@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Mohammad Shadab - Data Analyst Portfolio">
+    <meta name="keywords" content="Data Analyst, Power BI, Python, SQL, Mohammad Shadab">
+    <meta name="author" content="Mohammad Shadab">
+    <title>Mohammad Shadab - Data Analyst Portfolio</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js" integrity="sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+      (function() {
+        const originalConsole = window.console;
+        window.console = {
+          log: (...args) => {
+            originalConsole.log(...args);
+            window.parent.postMessage({ type: 'console', message: args.join(' ') }, '*');
+          },
+          error: (...args) => {
+            originalConsole.error(...args);
+            window.parent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
+          },
+          warn: (...args) => {
+            originalConsole.warn(...args);
+            window.parent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
+          }
+        };
+
+        let requestId = 0;
+        let callbacksMap = new Map();
+        let streamControllers = new Map();
+        
+        window.claude = {
+          complete: (prompt) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
+            });
+          }
+        };
+
+        window.storage = {
+          get: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageGet', id, key, shared }, '*');
+            });
+          },
+          set: (key, value, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
+            });
+          },
+          delete: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
+            });
+          },
+          list: (prefix, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = requestId++;
+              callbacksMap.set(id, { resolve, reject });
+              window.parent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
+            });
+          }
+        };
+
+        let pendingBlobs = new Map();
+        URL.createObjectURL = (blob) => {
+          // Store the blob and create an ID and URL for it
+          const blobId = `blob-${Date.now()}-${Math.random()}`;
+          pendingBlobs.set(blobId, blob);
+          return `blob-request://${blobId}`;
+        };
+
+        URL.revokeObjectURL = (url) => {
+          // Remove the blob from our store
+          const blobId = url.replace("blob-request://", "");
+          pendingBlobs.delete(blobId);
+        };
+
+        const getBlobFromURL = (url) => {
+          const blobId = url.replace("blob-request://", "");
+          return pendingBlobs.get(blobId);
+        };
+
+        // Override global fetch with streaming support
+        window.fetch = (url, init = {}) => {
+          return new Promise((resolve, reject) => {
+            const id = requestId++;
+            const channelId = `fetch-${id}-${Date.now()}`;
+            
+            callbacksMap.set(id, { 
+              resolve: (response) => {
+                // Create a ReadableStream for the response body
+                const stream = new ReadableStream({
+                  start(controller) {
+                    streamControllers.set(channelId, controller);
+                  },
+                  cancel() {
+                    streamControllers.delete(channelId);
+                  }
+                });
+                
+                // Create and return the Response with the stream
+                resolve(new Response(stream, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers
+                }));
+              },
+              reject,
+              channelId
+            });
+            
+            window.parent.postMessage({
+              type: 'proxyFetch',
+              id,
+              url,
+              init,
+              channelId
+            }, '*');
+          });
+        };
+
+        window.addEventListener('message', async (event) => {
+          if (event.data.type === 'takeScreenshot') {
+            const rootElement = document.getElementById('artifacts-component-root-html');
+            if (!rootElement) {
+              window.parent.postMessage({
+                type: 'screenshotError',
+                error: new Error('Root element not found'),
+              }, '*');
+            }
+            const screenshot = await htmlToImage.toPng(rootElement, {
+              imagePlaceholder:
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
+            });
+            window.parent.postMessage({
+              type: 'screenshotData',
+              data: screenshot,
+            }, '*');
+          } else if (event.data.type === 'claudeComplete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.completion);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'proxyFetchResponse') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+              callbacksMap.delete(event.data.id);
+            } else {
+              // Initial response with headers, status, etc.
+              callback.resolve({
+                status: event.data.status,
+                statusText: event.data.statusText,
+                headers: event.data.headers
+              });
+              // Don't delete the callback yet if streaming
+              if (!event.data.body) {
+                callbacksMap.delete(event.data.id);
+              }
+            }
+          } else if (event.data.type === 'proxyFetchStream') {
+            // Handle streaming data chunks
+            const controller = streamControllers.get(event.data.channelId);
+            if (controller) {
+              if (event.data.error) {
+                controller.error(new Error(event.data.error));
+                streamControllers.delete(event.data.channelId);
+              } else if (event.data.done) {
+                controller.close();
+                streamControllers.delete(event.data.channelId);
+                // Clean up the callback
+                const callback = Array.from(callbacksMap.entries()).find(
+                  ([_, value]) => value.channelId === event.data.channelId
+                );
+                if (callback) {
+                  callbacksMap.delete(callback[0]);
+                }
+              } else if (event.data.chunk) {
+                controller.enqueue(new Uint8Array(event.data.chunk));
+              }
+            }
+          } else if (event.data.type === 'storageGet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageSet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageDelete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageList') {
+            const callback = callbacksMap.get(event.data.id);
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          }
+        });
+
+        window.addEventListener('click', (event) => {
+          const isEl = event.target instanceof HTMLElement;
+          if (!isEl) return;
+    
+          // find ancestor links
+          const linkEl = event.target.closest("a");
+          if (!linkEl || !linkEl.href) return;
+    
+          event.preventDefault();
+          event.stopImmediatePropagation();
+    
+          if (linkEl.href.startsWith("blob-request:")) {
+            const blob = getBlobFromURL(linkEl.href);
+            if (!blob) return;
+            void blob.arrayBuffer().then((data) => {
+              window.parent.postMessage({
+                type: "downloadFile",
+                filename: linkEl.download,
+                data,
+                mimeType: blob.type || "application/octet-stream",
+              });
+            });
+          } else if (linkEl.href.startsWith("data:")) {
+            const [header, base64Data] = linkEl.href.split(",");
+            const mimeMatch = header.match(/data:([^;]+)/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+            const binaryString = atob(base64Data);
+            const data = Uint8Array.from(binaryString, (c) =>
+              c.charCodeAt(0),
+            ).buffer;
+            window.parent.postMessage({
+              type: "downloadFile",
+              filename: linkEl.download,
+              data,
+              mimeType,
+            });
+          } else {
+            let linkUrl;
+            try {
+              linkUrl = new URL(linkEl.href);
+            } catch (error) {
+              return;
+            }
+    
+            if (linkUrl.hostname === window.location.hostname) return;
+      
+            window.parent.postMessage({
+              type: 'openExternal',
+              href: linkEl.href,
+            }, '*');
+          }
+      });
+
+        const originalOpen = window.open;
+        window.open = function (url) {
+          window.parent.postMessage({
+            type: "openExternal",
+            href: url,
+          }, "*");
+        };
+
+        window.addEventListener('error', (event) => {
+          window.parent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
+        });
+      })();
+    </script>
+  
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .floating-icons {
+            position: absolute;
+            font-size: 2rem;
+            animation: float 6s ease-in-out infinite;
+            z-index: 1;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .floating-icons:hover {
+            transform: scale(1.3) rotate(15deg);
+        }
+
+        .floating-icons:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
+        .floating-icons:nth-child(2) { top: 20%; right: 15%; animation-delay: 2s; }
+        .floating-icons:nth-child(3) { bottom: 30%; left: 20%; animation-delay: 4s; }
+        .floating-icons:nth-child(4) { bottom: 20%; right: 10%; animation-delay: 1s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 2;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            margin: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: slideDown 1s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-100px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .profile-pic {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ff9a9e"/><text x="50" y="60" text-anchor="middle" font-size="40" fill="white">👨‍💼</text></svg>');
+            background-size: cover;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            animation: pulse 2s infinite;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        h1 {
+            color: white;
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .contact-item {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            padding: 2rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: fadeInUp 1s ease-out;
+        }
+
+        .card:hover {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        @keyframes fadeInUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .card h3 {
+            color: white;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .card p {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+
+        .skills-section, .projects-section, .education-section {
+            margin: 2rem;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+        }
+
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .skill-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .skill-item:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .photo-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem;
+        }
+
+        .photo-item {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .photo-item:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .photo-placeholder {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: white;
+        }
+
+        .section-title {
+            color: white;
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .project-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            border-left: 4px solid #ff9a9e;
+        }
+
+        .project-item h4 {
+            color: white;
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .project-item p {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .social-link {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .social-link:hover {
+            transform: translateY(-5px) rotate(360deg);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .download-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            display: inline-block;
+            margin: 1rem;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .nav-section { grid-template-columns: 1fr; }
+            .contact-info { flex-direction: column; gap: 0.5rem; }
+            .photo-gallery { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+
+</head>
+<body>
+    
+    <!-- Floating Data Icons -->
+    <div class="floating-icons">📊</div>
+    <div class="floating-icons">💻</div>
+    <div class="floating-icons">📈</div>
+    <div class="floating-icons">🔍</div>
+
+    <div class="container">
+        <header>
+            <div class="profile-pic">👨‍💼</div>
+            <h1>Mohammad Shadab</h1>
+            <p class="subtitle">Data Analyst &amp; MCA Graduate</p>
+            <p style="color: rgba(255, 255, 255, 0.8); margin-bottom: 1rem;">
+                Aspiring Data Analyst with expertise in Power BI, Python, and SQL. 
+                Passionate about transforming data into actionable insights.
+            </p>
+            <div class="contact-info">
+                <div class="contact-item">
+                    <span>📧</span> mohdshadab025@gmail.com
+                </div>
+                <div class="contact-item">
+                    <span>📱</span> +91 9897952262
+                </div>
+                <div class="contact-item">
+                    <span>📍</span> Bareilly, India
+                </div>
+            </div>
+        </header>
+
+        <div class="nav-section">
+            <div class="card" onclick="scrollToSection('about')">
+                <span class="card-icon">👨‍💼</span>
+                <h3>About Me</h3>
+                <p>Discover my journey as a data analyst, my passion for data visualization, and what drives me to extract meaningful insights from data.</p>
+            </div>
+
+            <div class="card" onclick="scrollToSection('skills')">
+                <span class="card-icon">💡</span>
+                <h3>Technical Skills</h3>
+                <p>Explore my technical expertise in Power BI, Python, SQL, Excel, and data science fundamentals.</p>
+            </div>
+
+            <div class="card" onclick="scrollToSection('projects')">
+                <span class="card-icon">🚀</span>
+                <h3>Projects</h3>
+                <p>Check out my data analysis projects including e-commerce analysis and food delivery insights.</p>
+            </div>
+
+            <div class="card" onclick="scrollToSection('education')">
+                <span class="card-icon">🎓</span>
+                <h3>Education</h3>
+                <p>Learn about my educational background and professional certifications in data analytics.</p>
+            </div>
+        </div>
+
+        <section id="about" class="skills-section">
+            <h2 class="section-title">About Me</h2>
+            <div style="color: rgba(255, 255, 255, 0.9); text-align: center; font-size: 1.1rem; line-height: 1.8;">
+                <p>I'm an aspiring Data Analyst with a Master's degree in Computer Application from Abdul Kalam Technical University. 
+                I'm passionate about transforming raw data into meaningful insights that drive business decisions.</p>
+                <br>
+                <p>My interests include data visualization, data transformation, and extracting actionable insights from complex datasets. 
+                I'm eager to launch my career in a dynamic organization where I can grow my skills and contribute to data-driven decision-making.</p>
+            </div>
+        </section>
+
+        <section id="skills" class="skills-section">
+            <h2 class="section-title">Technical Skills</h2>
+            <div class="skills-grid">
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">📊 Power BI</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">🐍 Python</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">🗃️ MySQL</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">📈 MS Excel</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">🐼 Pandas</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">🔢 NumPy</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">📊 Data Visualization</div>
+                <div class="skill-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">🧠 Data Science</div>
+            </div>
+        </section>
+
+        <section id="projects" class="projects-section">
+            <h2 class="section-title">Personal Projects</h2>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>🛒 E-Commerce Data Analysis using Power BI</h4>
+                <p>Comprehensive analysis of e-commerce data using Power BI to identify sales trends, customer behavior patterns, and business insights. Created interactive dashboards for stakeholder decision-making.</p>
+            </div>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>🍕 Swiggy Instamart Data Analysis using Python</h4>
+                <p>In-depth analysis of food delivery data using Python, Pandas, and data visualization libraries. Uncovered delivery patterns, customer preferences, and operational efficiency metrics.</p>
+            </div>
+        </section>
+
+        <section id="education" class="education-section">
+            <h2 class="section-title">Education &amp; Certifications</h2>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>🎓 Master of Computer Application (MCA)</h4>
+                <p>Abdul Kalam Technical University, Lucknow (2023-2025)</p>
+            </div>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>📜 Bachelor of Science with Mathematics</h4>
+                <p>MJPRU University, Bareilly</p>
+            </div>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>💻 O Level Diploma</h4>
+                <p>NIELIT, Delhi</p>
+            </div>
+            <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>🏅 Professional Certifications</h4>
+                <p>• Data Analyst Certificate - Code Square Institution<br>
+                • Data Analytics by CareerNinja<br>
+                • Master of ChatGPT<br>
+                • Power BI, MySQL, Python Programming<br>
+                • MS Excel &amp; Data Science Fundamentals</p>
+            </div>
+        </section>
+
+        <section class="skills-section">
+            <h2 class="section-title">Photo Gallery</h2>
+            <div class="photo-gallery">
+                <div class="photo-item">
+                    <div class="photo-placeholder">🏛️<br><small style="font-size: 0.8rem;">Historic Monument</small></div>
+                </div>
+                <div class="photo-item">
+                    <div class="photo-placeholder">🌊<br><small style="font-size: 0.8rem;">Lakeside View</small></div>
+                </div>
+                <div class="photo-item">
+                    <div class="photo-placeholder">⛵<br><small style="font-size: 0.8rem;">Boat Trip</small></div>
+                </div>
+                <div class="photo-item">
+                    <div class="photo-placeholder">🌅<br><small style="font-size: 0.8rem;">Sunset View</small></div>
+                </div>
+                <div class="photo-item">
+                    <div class="photo-placeholder">🏞️<br><small style="font-size: 0.8rem;">Nature Walk</small></div>
+                </div>
+                <div class="photo-item">
+                    <div class="photo-placeholder">🏛️<br><small style="font-size: 0.8rem;">Delhi Gate</small></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="skills-section" style="text-align: center;">
+            <h2 class="section-title">Let's Connect!</h2>
+            <p style="color: rgba(255, 255, 255, 0.8); margin-bottom: 2rem; font-size: 1.1rem;">
+                Ready to collaborate on data-driven projects? Let's turn data into insights together!
+            </p>
+            
+            <div class="social-links">
+                <a href="mailto:mohdshadab025@gmail.com" class="social-link" title="Email">📧</a>
+                <a href="https://linkedin.com/in/mohammad--shadab" class="social-link" title="LinkedIn" target="_blank">💼</a>
+                <a href="https://github.com/shadab025" class="social-link" title="GitHub" target="_blank">🐙</a>
+                <a href="tel:+919897952262" class="social-link" title="Call">📱</a>
+            </div>
+            
+            <a href="#" class="download-btn" onclick="downloadHTML()">📄 Download Resume</a>
+        </div>
+    </div>
+
+    <footer>
+        <p>Made with ❤️ and data-driven passion! © 2024 Mohammad Shadab</p>
+    </footer>
+
+    <script>
+        // Smooth scrolling to sections
+        function scrollToSection(sectionId) {
+            document.getElementById(sectionId).scrollIntoView({ 
+                behavior: 'smooth' 
+            });
+        }
+
+        // Enhanced download HTML function with better formatting
+        function downloadHTML() {
+            // Get the current HTML content
+            const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Mohammad Shadab - Data Analyst Portfolio">
+    <meta name="keywords" content="Data Analyst, Power BI, Python, SQL, Mohammad Shadab">
+    <meta name="author" content="Mohammad Shadab">
+    <title>Mohammad Shadab - Data Analyst Portfolio</title>
+    ${document.head.innerHTML.replace(/<title>.*?<\/title>/, '')}
+</head>
+<body>
+    ${document.body.innerHTML}
+    
+    <!-- Instructions for GitHub Pages -->
+    <!-- 
+    To publish on GitHub Pages:
+    1. Create a new repository on GitHub
+    2. Upload this file as 'index.html'
+    3. Go to repository Settings > Pages
+    4. Select 'Deploy from a branch' and choose 'main'
+    5. Your site will be live at: https://[username].github.io/[repository-name]
+    
+    To add your actual photos:
+    1. Upload your photos to the same repository
+    2. Replace the data:image/jpeg;base64 URLs with your photo file names
+    3. Example: src="photo1.jpg" instead of the base64 data
+    -->
+</body>
+</html>`;
+
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'index.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            // Show success message
+            alert('✅ HTML file downloaded successfully!\n\n📝 Instructions:\n1. Save this as index.html\n2. Upload to your GitHub repository\n3. Enable GitHub Pages in settings\n4. Your portfolio will be live!');
+        }
+
+        // Add click interaction to floating icons
+        document.querySelectorAll('.floating-icons').forEach(icon => {
+            icon.addEventListener('click', function() {
+                this.style.animation = 'none';
+                this.style.transform = 'scale(1.5) rotate(720deg)';
+                setTimeout(() => {
+                    this.style.animation = 'float 6s ease-in-out infinite';
+                    this.style.transform = '';
+                }, 1000);
+            });
+        });
+
+        // Skills animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.animation = 'fadeInUp 0.6s ease-out';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.skill-item, .project-item').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Mouse trail effect with data icons
+        const dataIcons = ['📊', '💻', '📈', '🔍', '💡'];
+        document.addEventListener('mousemove', function(e) {
+            if (Math.random() < 0.05) { // 5% chance
+                const trail = document.createElement('div');
+                trail.textContent = dataIcons[Math.floor(Math.random() * dataIcons.length)];
+                trail.style.position = 'absolute';
+                trail.style.left = e.clientX + 'px';
+                trail.style.top = e.clientY + 'px';
+                trail.style.fontSize = '1rem';
+                trail.style.pointerEvents = 'none';
+                trail.style.animation = 'float 2s ease-out forwards';
+                trail.style.zIndex = '1000';
+                trail.style.opacity = '0.7';
+                document.body.appendChild(trail);
+                
+                setTimeout(() => trail.remove(), 2000);
+            }
+        });
+
+        // Welcome message
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                console.log('Welcome to Mohammad Shadab\'s Data Analyst Portfolio! 📊✨');
+            }, 1000);
+        });
+    </script>
+
+
+    
+    <!-- Instructions for GitHub Pages -->
+    <!-- 
+    To publish on GitHub Pages:
+    1. Create a new repository on GitHub
+    2. Upload this file as 'index.html'
+    3. Go to repository Settings > Pages
+    4. Select 'Deploy from a branch' and choose 'main'
+    5. Your site will be live at: https://[username].github.io/[repository-name]
+    
+    To add your actual photos:
+    1. Upload your photos to the same repository
+    2. Replace the data:image/jpeg;base64 URLs with your photo file names
+    3. Example: src="photo1.jpg" instead of the base64 data
+    -->
+</body>
+</html>
