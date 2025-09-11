@@ -469,8 +469,21 @@
             color: rgba(255, 255, 255, 0.8);
             line-height: 1.6;
         }
-
+       
         .skills-section, .projects-section, .education-section {
+            margin: 2rem;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+        }
+
+         .card p {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+       
+        .skills-section, .training-section, .training-section {
             margin: 2rem;
             padding: 2rem;
             background: rgba(255, 255, 255, 0.1);
@@ -674,6 +687,11 @@
                 <h3>Education</h3>
                 <p>Learn about my educational background and professional certifications in data analytics.</p>
             </div>
+             <div class="card" onclick="scrollToSection('training')">
+                <span class="card-icon">🎓</span>
+                <h3>Training</h3>
+                <p>Learn about my training in Business analytics With AI.</p>
+            </div>
         </div>
 
         <section id="about" class="skills-section">
@@ -712,7 +730,15 @@
                 <p>In-depth analysis of food delivery data using Python, Pandas, and data visualization libraries. Uncovered delivery patterns, customer preferences, and operational efficiency metrics.</p>
             </div>
         </section>
-
+        
+         <section id="training" class="trainig-section">
+            <h2 class="section-title">Training</h2>
+            <div class="training-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
+                <h4>🛒 BUsiness Analytics With AI </h4>
+                <p>IN this training i have learnt probability distribution, predictive analytics, AI tools, and more. This is accredited by IIT-Madras Pravartak.</p>
+            </div>
+        </section>     
+        
         <section id="education" class="education-section">
             <h2 class="section-title">Education &amp; Certifications</h2>
             <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
@@ -729,7 +755,8 @@
             </div>
             <div class="project-item" style="animation: 0.6s ease-out 0s 1 normal none running fadeInUp;">
                 <h4>🏅 Professional Certifications</h4>
-                <p>• Data Analyst Certificate - Code Square Institution<br>
+                <p>• Business Analytics With AI BY Internshala Associated with IIT Madras<br>
+                • Data Analyst Certificate - Code Square Institution<br>
                 • Data Analytics by CareerNinja<br>
                 • Master of ChatGPT<br>
                 • Power BI, MySQL, Python Programming<br>
@@ -755,16 +782,16 @@
                     <div class="photo2.jpg">🌊<br><small style="font-size: 0.8rem;">Lakeside View</small></div>
                 </div>
                 <div class="photo-item">
-                    <div class="photo.3jpg">⛵<br><small style="font-size: 0.8rem;">Boat Trip</small></div>
+                    <div class="photo3.jpg">⛵<br><small style="font-size: 0.8rem;">Boat Trip</small></div>
                 </div>
                 <div class="photo-item">
-                    <div class="photo.4jpg">🌅<br><small style="font-size: 0.8rem;">Sunset View</small></div>
+                    <div class="photo4.jpg">🌅<br><small style="font-size: 0.8rem;">Sunset View</small></div>
                 </div>
                 <div class="photo-item">
-                    <div class="photo.5jpg">🏞️<br><small style="font-size: 0.8rem;">Nature Walk</small></div>
+                    <div class="photo5.jpg">🏞️<br><small style="font-size: 0.8rem;">Nature Walk</small></div>
                 </div>
                 <div class="photo-item">
-                    <div class="photo.6jpg">🏛️<br><small style="font-size: 0.8rem;">Delhi Gate</small></div>
+                    <div class="photo6.jpg">🏛️<br><small style="font-size: 0.8rem;">Delhi Gate</small></div>
                 </div>
             </div>
         </section>
@@ -782,12 +809,12 @@
                 <a href="tel:+919897952262" class="social-link" title="Call">📱</a>
             </div>
             
-            <a href="#" class="download-btn" onclick="downloadHTML()">📄 Download Resume</a>
+            <a href="#" class="download-btn" onclick="()">📄 Download Resume</a>
         </div>
     </div>
 
     <footer>
-        <p>Made with ❤️ and data-driven passion! © 2024 Mohammad Shadab</p>
+        <p>Made with ❤️ and data-driven passion! © 2025 Mohammad Shadab</p>
     </footer>
 
     <script>
