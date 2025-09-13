@@ -839,7 +839,7 @@
          <a href="tel:+919897952262" class="social-link" title="Call">📱</a>
      </div>
 
-    <a href="My Resume.pdf" class="download-btn" download="Mohammad_Shadab_Resume.pdf">📄 Download Resume</a>
+         <a href="My_Resume.pdf" class="download-btn" download="Mohammad_Shadab_Resume.pdf">📄 Download Resume</a>
         </div>
  <script>
              document.addEventListener('click', function (event) {
@@ -848,12 +848,7 @@
                 window.open('My_Resume.pdf', '_blank');
                  }
               });
-        </script>
-
- </body>
- </html>
-
-
+    </script>
             
 <!-- 
                <div class="social-links">
@@ -928,14 +923,14 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'index.html';
+            a.download = 'My_Resume.pdf';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
             
             // Show success message
-            alert('✅ HTML file downloaded successfully!\n\n📝 Instructions:\n1. Save this as index.html\n2. Upload to your GitHub repository\n3. Enable GitHub Pages in settings\n4. Your portfolio will be live!');
+            // alert('✅ HTML file downloaded successfully!\n\n📝 Instructions:\n1. Save this as index.html\n2. Upload to your GitHub repository\n3. Enable GitHub Pages in settings\n4. Your portfolio will be live!');
         }
 
         // Add click interaction to floating icons
